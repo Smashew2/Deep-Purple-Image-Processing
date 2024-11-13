@@ -117,7 +117,7 @@ if __name__ == "__main__":
     if needs_cleaning_log:
         with open('holes_needing_cleaning.csv', 'w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['Hole Number', 'Needs Cleaning'])
+            writer.writerow(['Hole Number', 'Percent difference from Baseline Image'])
             for entry in needs_cleaning_log:
                 writer.writerow(entry)
         print("Cleaning log saved as 'holes_needing_cleaning.csv'.")
