@@ -23,8 +23,27 @@ def crop_center_template(image_path, center_x, center_y, width, height, x_offset
     
     return template
 
-def find_center_in_image(template, captured_image_path, needs_cleaning_log, threshold=0.6, method=cv2.TM_CCOEFF_NORMED):
+def is_image_blurry(image_path, blur_threshold=100.0):
+    """Check if the image is too blurry using Laplacian variance."""
+    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        return False
+    
+    # Compute the Laplacian of the image and then compute its variance
+    laplacian = cv2.Laplacian(img, cv2.CV_64F)
+    variance = laplacian.var()
+    
+    # If variance is below the threshold, consider the image blurry
+    return variance < blur_threshold
+
+def find_center_in_image(template, captured_image_path, needs_cleaning_log, threshold=0.6, method=cv2.TM_CCOEFF_NORMED, blur_threshold=100.0):
     """Match the template in the captured image using multi-scale cv2.TM_CCOEFF_NORMED."""
+    # Check if the image is too blurry
+    if is_image_blurry(captured_image_path, blur_threshold):
+        hole_number = os.path.splitext(os.path.basename(captured_image_path))[0]
+        needs_cleaning_log.append([hole_number, "Image unable to be used, please retake"])
+        return
+    
     captured_img = cv2.imread(captured_image_path, cv2.IMREAD_GRAYSCALE)  # Read captured image in grayscale
     if captured_img is None:
         return
@@ -98,7 +117,7 @@ if __name__ == "__main__":
     if needs_cleaning_log:
         with open('holes_needing_cleaning.csv', 'w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['Hole Number', 'Percent difference from Baseline Hole'])
+            writer.writerow(['Hole Number', 'Needs Cleaning'])
             for entry in needs_cleaning_log:
                 writer.writerow(entry)
         print("Cleaning log saved as 'holes_needing_cleaning.csv'.")

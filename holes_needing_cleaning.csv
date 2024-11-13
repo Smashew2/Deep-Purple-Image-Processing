@@ -1,4 +1,6 @@
-Hole Number,Percent difference from Baseline Hole
+Hole Number,Needs Cleaning
+BlurryTest,"Image unable to be used, please retake"
+BlurryTest2,"Image unable to be used, please retake"
 Hole1,54.38%
 Hole12,56.80%
 Hole2,51.67%
