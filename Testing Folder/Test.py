@@ -31,37 +31,56 @@ def crop_center_template(image_path, center_x, center_y, width, height, x_offset
     
     return template
 
-def find_center_in_image(template, captured_image_path, needs_cleaning_log, threshold=0.2, method=cv2.TM_SQDIFF_NORMED):
-    """Match the template in the captured image using cv2.TM_SQDIFF_NORMED."""
+def find_center_in_image(template, captured_image_path, needs_cleaning_log, threshold=0.6, method=cv2.TM_CCOEFF_NORMED):
+    """Match the template in the captured image using multi-scale cv2.TM_CCOEFF_NORMED."""
     captured_img = cv2.imread(captured_image_path, cv2.IMREAD_GRAYSCALE)  # Read captured image in grayscale
     if captured_img is None:
         print(f"Error: Could not load captured image at {captured_image_path}.")
         return
     
-    # Perform template matching
-    result = cv2.matchTemplate(captured_img, template, method)
-    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-    
+    # Initialize variables for best match
+    best_match_val = -1
+    best_match_loc = None
+    best_scale = 1.0
+
+    # Define scales to search over (adjust range and step as needed)
+    scales = np.linspace(0.8, 1.2, 20)  # Try scaling from 80% to 120%
+
+    for scale in scales:
+        # Resize template
+        resized_template = cv2.resize(template, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
+        
+        # Ensure the template size is smaller than the captured image
+        if resized_template.shape[0] > captured_img.shape[0] or resized_template.shape[1] > captured_img.shape[1]:
+            continue
+
+        # Perform template matching
+        result = cv2.matchTemplate(captured_img, resized_template, method)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+
+        # Use max_val for cv2.TM_CCOEFF_NORMED, higher values indicate better match
+        if max_val > best_match_val:
+            best_match_val = max_val
+            best_match_loc = max_loc
+            best_scale = scale
+
+    # Determine if a match is good enough
     hole_number = os.path.splitext(os.path.basename(captured_image_path))[0]
-    
-    # `cv2.TM_SQDIFF_NORMED` - lower values indicate better matches
-    is_match = min_val <= threshold  # Consider it a match if it's 80% or more similar
+    is_match = best_match_val >= threshold
 
-    # Determine the coordinates of the rectangle to draw on the image
-    top_left = min_loc
-    bottom_right = (top_left[0] + template.shape[1], top_left[1] + template.shape[0])
-
-    # If a match is found, draw a green rectangle around the matched area
+    # Draw the matching area
     if is_match:
+        top_left = best_match_loc
+        bottom_right = (top_left[0] + int(template.shape[1] * best_scale), 
+                        top_left[1] + int(template.shape[0] * best_scale))
         cv2.rectangle(captured_img, top_left, bottom_right, (0, 255, 0), 2)  # Green rectangle
-        print(f"Center feature found in image {captured_image_path} with match score {min_val:.2f}. Hole {hole_number} does not need cleaning.")
+        print(f"Center feature found in image {captured_image_path} with match score {best_match_val:.2f}. Hole {hole_number} does not need cleaning.")
     else:
-        # If no match is found, draw a red rectangle and log it
-        cv2.rectangle(captured_img, top_left, bottom_right, (0, 0, 255), 2)  # Red rectangle
-        print(f"Center feature not found in image {captured_image_path}. Adding hole {hole_number} to cleaning log.")
+        # Log the hole if the match score is below 0.6
+        print(f"Center feature not found or score below 0.6 in image {captured_image_path}. Adding hole {hole_number} to cleaning log.")
         needs_cleaning_log.append(hole_number)
 
-    # Show the image with the rectangle drawn (for debugging and visual confirmation)
+    # Show the image with the rectangle drawn
     cv2.imshow(f"Matching: {hole_number}", captured_img)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
@@ -92,8 +111,8 @@ if __name__ == "__main__":
                 if filename.lower().endswith(('.png', '.jpg', '.jpeg')):  # Check for image files
                     captured_image_path = os.path.join(captured_image_folder, filename)
                     
-                    # Use `cv2.TM_SQDIFF_NORMED` method with a threshold for best matching (80% similarity)
-                    find_center_in_image(template, captured_image_path, needs_cleaning_log, threshold=0.2, method=cv2.TM_SQDIFF_NORMED)
+                    # Use `cv2.TM_CCOEFF_NORMED` method with a threshold of 0.6 for cleaning determination
+                    find_center_in_image(template, captured_image_path, needs_cleaning_log, threshold=0.6, method=cv2.TM_CCOEFF_NORMED)
         else:
             print("Captured image folder does not exist.")
 
