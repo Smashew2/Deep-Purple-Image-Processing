@@ -55,18 +55,16 @@ def find_center_in_image(template, captured_image_path, needs_cleaning_log, thre
             best_match_loc = max_loc
             best_scale = scale
 
-    # Determine if a match is good enough
+    # Calculate match percentage as a percentage of the best match score
+    match_percentage = best_match_val * 100
+
+    # Determine if the match is good enough
     hole_number = os.path.splitext(os.path.basename(captured_image_path))[0]
     is_match = best_match_val >= threshold
 
-    # Draw the matching area if a match is found
-    if is_match:
-        top_left = best_match_loc
-        bottom_right = (top_left[0] + int(template.shape[1] * best_scale), 
-                        top_left[1] + int(template.shape[0] * best_scale))
-    else:
-        # Log the hole if the match score is below 0.6
-        needs_cleaning_log.append(hole_number)
+    # Only add to the log if the match score is below the threshold (cleaning needed)
+    if not is_match:
+        needs_cleaning_log.append([hole_number, f"{match_percentage:.2f}%"])
 
 # Main Function
 if __name__ == "__main__":
@@ -76,11 +74,11 @@ if __name__ == "__main__":
     captured_image_folder = r'C:\Users\smash\Downloads\ImageProcessing Test'  # Folder with test images
 
     # Coordinates and size for the center template
-    center_x, center_y = 150, 150 
-    template_width, template_height = 50, 50 
+    center_x, center_y = 150, 150  # Example coordinates (adjust based on your image)
+    template_width, template_height = 50, 50  # Example size (adjust as needed)
 
     # Offset values to shift the template slightly left and up
-    x_offset, y_offset = -15, -45 
+    x_offset, y_offset = -15, -45  # Adjust these values as needed
 
     # Crop the center template from the baseline image with an offset
     template = crop_center_template(source_image_path, center_x, center_y, template_width, template_height, x_offset, y_offset)
@@ -97,9 +95,12 @@ if __name__ == "__main__":
                     find_center_in_image(template, captured_image_path, needs_cleaning_log, threshold=0.6, method=cv2.TM_CCOEFF_NORMED)
 
     # Save log to CSV once processing is complete
-    with open('holes_needing_cleaning.csv', 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Hole Number', 'Needs Cleaning'])
-        for hole in needs_cleaning_log:
-            writer.writerow([hole, 'Yes'])
-    print("Cleaning log saved as 'holes_needing_cleaning.csv'.")
+    if needs_cleaning_log:
+        with open('holes_needing_cleaning.csv', 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['Hole Number', 'Percent difference from Baseline Hole'])
+            for entry in needs_cleaning_log:
+                writer.writerow(entry)
+        print("Cleaning log saved as 'holes_needing_cleaning.csv'.")
+    else:
+        print("No holes need cleaning.")
