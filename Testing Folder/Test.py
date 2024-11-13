@@ -3,71 +3,68 @@ import numpy as np
 import os
 import csv
 
-# Feature Matching and Homography-based Pattern Check Function
-def find_feature_in_images(source_image_path, captured_image_path, needs_cleaning_log):
-    source_img = cv2.imread(source_image_path, cv2.IMREAD_GRAYSCALE)
-    if source_img is None:
-        print("Error: Could not load source image.")
-        return
+def crop_center_template(image_path, center_x, center_y, width, height, x_offset=0, y_offset=0, show_template=False):
+    """Crop a specific region around the center from the image and optionally display it."""
+    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)  # Read image in grayscale
+    if img is None:
+        print(f"Error: Could not load image at {image_path}.")
+        return None
+    
+    # Apply the offset to center_x and center_y
+    x_start = int(center_x - width / 2 + x_offset)
+    y_start = int(center_y - height / 2 + y_offset)
+    
+    # Check that the crop coordinates are within the image dimensions
+    if (x_start < 0 or y_start < 0 or
+        x_start + width > img.shape[1] or
+        y_start + height > img.shape[0]):
+        print("Error: Crop area is out of bounds.")
+        return None
+    
+    template = img[y_start:y_start+height, x_start:x_start+width]
+    
+    # Display the cropped template area if requested
+    if show_template:
+        cv2.imshow("Template Area", template)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+    
+    return template
 
-    # Using ORB feature detector on the full image
-    orb = cv2.ORB_create(nfeatures=1000, scaleFactor=1.2, nlevels=8)
-    source_keypoints, source_descriptors = orb.detectAndCompute(source_img, None)
-
-    captured_img = cv2.imread(captured_image_path, cv2.IMREAD_GRAYSCALE)
+def find_center_in_image(template, captured_image_path, needs_cleaning_log, threshold=0.2, method=cv2.TM_SQDIFF_NORMED):
+    """Match the template in the captured image using cv2.TM_SQDIFF_NORMED."""
+    captured_img = cv2.imread(captured_image_path, cv2.IMREAD_GRAYSCALE)  # Read captured image in grayscale
     if captured_img is None:
         print(f"Error: Could not load captured image at {captured_image_path}.")
         return
+    
+    # Perform template matching
+    result = cv2.matchTemplate(captured_img, template, method)
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+    
     hole_number = os.path.splitext(os.path.basename(captured_image_path))[0]
-    captured_keypoints, captured_descriptors = orb.detectAndCompute(captured_img, None)
+    
+    # `cv2.TM_SQDIFF_NORMED` - lower values indicate better matches
+    is_match = min_val <= threshold  # Consider it a match if it's 80% or more similar
 
-    print(f"Source image keypoints: {len(source_keypoints)}")
-    print(f"Captured image ({hole_number}) keypoints: {len(captured_keypoints)}")
+    # Determine the coordinates of the rectangle to draw on the image
+    top_left = min_loc
+    bottom_right = (top_left[0] + template.shape[1], top_left[1] + template.shape[0])
 
-    # Check if descriptors are found
-    if source_descriptors is None or captured_descriptors is None:
-        print("Error: Could not find descriptors in one of the images.")
-        return
-
-    # Use FLANN matcher to find matches
-    index_params = dict(algorithm=6, trees=5)  # Using LSH (Locality Sensitive Hashing) for ORB
-    search_params = dict(checks=50)
-    flann = cv2.FlannBasedMatcher(index_params, search_params)
-    matches = flann.knnMatch(source_descriptors, captured_descriptors, k=2)
-
-    # Relaxed ratio test: Allow more matches with weaker confidence
-    good_matches = []
-    for m in matches:
-        if len(m) == 2:  # Ensure we have at least two matches
-            if m[0].distance < 0.7 * m[1].distance:  # Relaxed ratio test (less strict)
-                good_matches.append(m[0])
-
-    hole_number = os.path.splitext(os.path.basename(captured_image_path))[0]  # Get the hole number from the filename
-
-    if len(good_matches) >= 5:  # Reduced threshold for good matches
-        print(f"Good matches found in image {captured_image_path}. Checking pattern similarity...")
-
-        # Extract matched points
-        src_pts = np.float32([source_keypoints[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-        dst_pts = np.float32([captured_keypoints[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-
-        # Use RANSAC to find homography with more freedom
-        M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)  # Relaxed threshold for RANSAC
-
-        # If a homography matrix is found, it means the pattern is similar
-        if M is not None and np.sum(mask) > 3:  # Relaxed inlier condition (less strict)
-            print(f"Pattern is similar in image {captured_image_path}. Hole {hole_number} does not need cleaning.")
-            # Optionally visualize the matches
-            img_matches = cv2.drawMatches(source_img, source_keypoints, captured_img, captured_keypoints, good_matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-            cv2.imshow(f"Matches for Hole {hole_number}", img_matches)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-        else:
-            print(f"Pattern mismatch detected in image {captured_image_path}. Adding hole {hole_number} to cleaning log.")
-            needs_cleaning_log.append(hole_number)
+    # If a match is found, draw a green rectangle around the matched area
+    if is_match:
+        cv2.rectangle(captured_img, top_left, bottom_right, (0, 255, 0), 2)  # Green rectangle
+        print(f"Center feature found in image {captured_image_path} with match score {min_val:.2f}. Hole {hole_number} does not need cleaning.")
     else:
-        print(f"Not enough good matches found in image {captured_image_path}. Adding hole {hole_number} to cleaning log.")
+        # If no match is found, draw a red rectangle and log it
+        cv2.rectangle(captured_img, top_left, bottom_right, (0, 0, 255), 2)  # Red rectangle
+        print(f"Center feature not found in image {captured_image_path}. Adding hole {hole_number} to cleaning log.")
         needs_cleaning_log.append(hole_number)
+
+    # Show the image with the rectangle drawn (for debugging and visual confirmation)
+    cv2.imshow(f"Matching: {hole_number}", captured_img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
 # Main Function
 if __name__ == "__main__":
@@ -76,26 +73,34 @@ if __name__ == "__main__":
     source_image_path = r'C:\Users\smash\Downloads\ImageProcessing Test\Baseline Image\Baseline_Clean_Image.png'  # Path to baseline image
     captured_image_folder = r'C:\Users\smash\Downloads\ImageProcessing Test'  # Folder with test images
 
-    if not os.path.exists(source_image_path):
-        print("Source image path does not exist.")
+    # Coordinates and size for the center template
+    center_x, center_y = 150, 150  # Example coordinates (adjust based on your image)
+    template_width, template_height = 50, 50  # Example size (adjust as needed)
+
+    # Offset values to shift the template slightly left and up
+    x_offset, y_offset = -15, -45  # Adjust these values as needed
+
+    # Crop the center template from the baseline image with an offset and display it
+    template = crop_center_template(source_image_path, center_x, center_y, template_width, template_height, x_offset, y_offset, show_template=True)
+    if template is None:
+        print("Failed to crop the template. Exiting.")
     else:
-        print("Source image path exists.")
-    
-    if os.path.exists(captured_image_folder):
-        print(f"Processing images in folder: {captured_image_folder}")
-        
-        # Process each image in the folder
-        for filename in os.listdir(captured_image_folder):
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):  # Check for image files
-                captured_image_path = os.path.join(captured_image_folder, filename)
-                find_feature_in_images(source_image_path, captured_image_path, needs_cleaning_log)
-    else:
-        print("Captured image folder does not exist.")
+        # Process each captured image if template cropping was successful
+        if os.path.exists(captured_image_folder):
+            print(f"Processing images in folder: {captured_image_folder}")
+            for filename in os.listdir(captured_image_folder):
+                if filename.lower().endswith(('.png', '.jpg', '.jpeg')):  # Check for image files
+                    captured_image_path = os.path.join(captured_image_folder, filename)
+                    
+                    # Use `cv2.TM_SQDIFF_NORMED` method with a threshold for best matching (80% similarity)
+                    find_center_in_image(template, captured_image_path, needs_cleaning_log, threshold=0.2, method=cv2.TM_SQDIFF_NORMED)
+        else:
+            print("Captured image folder does not exist.")
 
     # Save log to CSV once processing is complete
     with open('holes_needing_cleaning.csv', 'w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(['Hole Number', ' Needs Cleaning'])
+        writer.writerow(['Hole Number', 'Needs Cleaning'])
         for hole in needs_cleaning_log:
-            writer.writerow([hole, ' Yes'])
+            writer.writerow([hole, 'Yes'])
     print("Cleaning log saved as 'holes_needing_cleaning.csv'.")
