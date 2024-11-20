@@ -36,12 +36,13 @@ def is_image_blurry(image_path, blur_threshold=100.0):
     # If variance is below the threshold, consider the image blurry
     return variance < blur_threshold
 
-def find_center_in_image(template, captured_image_path, needs_cleaning_log, threshold=0.6, method=cv2.TM_CCOEFF_NORMED, blur_threshold=100.0):
+def find_center_in_image(template, captured_image_path, needs_cleaning_log, match_percentages, threshold=0.6, method=cv2.TM_CCOEFF_NORMED, blur_threshold=100.0):
     """Match the template in the captured image using multi-scale cv2.TM_CCOEFF_NORMED."""
     # Check if the image is too blurry
     if is_image_blurry(captured_image_path, blur_threshold):
         hole_number = os.path.splitext(os.path.basename(captured_image_path))[0]
         needs_cleaning_log.append([hole_number, "Image unable to be used, please retake"])
+        match_percentages.append([hole_number, "N/A"])  # Add N/A for blurry images
         return
     
     captured_img = cv2.imread(captured_image_path, cv2.IMREAD_GRAYSCALE)  # Read captured image in grayscale
@@ -84,10 +85,14 @@ def find_center_in_image(template, captured_image_path, needs_cleaning_log, thre
     # Only add to the log if the match score is below the threshold (cleaning needed)
     if not is_match:
         needs_cleaning_log.append([hole_number, f"{match_percentage:.2f}%"])
+    
+    # Add match percentage to the separate list
+    match_percentages.append([hole_number, f"{match_percentage:.2f}%"])
 
 # Main Function
 if __name__ == "__main__":
     needs_cleaning_log = []  # List to track holes needing cleaning
+    match_percentages = []   # List to track hole numbers and match percentages
 
     source_image_path = r'C:\Users\smash\Downloads\ImageProcessing Test\Baseline Image\Baseline_Clean_Image.png'  # Path to baseline image
     captured_image_folder = r'C:\Users\smash\Downloads\ImageProcessing Test'  # Folder with test images
@@ -107,13 +112,13 @@ if __name__ == "__main__":
         # Process each captured image if template cropping was successful
         if os.path.exists(captured_image_folder):
             for filename in os.listdir(captured_image_folder):
-                if filename.lower().endswith(('.png', '.jpg', '.jpeg','.JPG')):  # Check for image files
+                if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.JPG')):  # Check for image files
                     captured_image_path = os.path.join(captured_image_folder, filename)
                     
                     # Use `cv2.TM_CCOEFF_NORMED` method with a threshold of 0.6 for cleaning determination
-                    find_center_in_image(template, captured_image_path, needs_cleaning_log, threshold=0.65, method=cv2.TM_CCOEFF_NORMED)
+                    find_center_in_image(template, captured_image_path, needs_cleaning_log, match_percentages, threshold=0.65, method=cv2.TM_CCOEFF_NORMED)
 
-    # Save log to CSV once processing is complete
+    # Save cleaning log to CSV
     if needs_cleaning_log:
         with open('holes_needing_cleaning.csv', 'w', newline='') as file:
             writer = csv.writer(file)
@@ -123,3 +128,14 @@ if __name__ == "__main__":
         print("Cleaning log saved as 'holes_needing_cleaning.csv'.")
     else:
         print("No holes need cleaning.")
+
+    # Save match percentages to CSV
+    if match_percentages:
+        with open('hole_match_percentages.csv', 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['Hole Number', 'Match Percentage'])
+            for entry in match_percentages:
+                writer.writerow(entry)
+        print("Match percentages saved as 'hole_match_percentages.csv'.")
+    else:
+        print("No match percentages recorded.")
