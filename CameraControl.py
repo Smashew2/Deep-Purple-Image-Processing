@@ -1,62 +1,66 @@
 import pyautogui
-import cv2
-import numpy as np
+import pygetwindow as gw
 import time
+import subprocess
 
-# Parameters
-blur_threshold = 100   # Threshold for "blurriness"
-max_attempts = 3       # Max number of focus adjustment attempts
-
-# Coordinates for Capture and Focus Buttons
-capture_button_coords = (200, 300)  # Replace with actual Capture button coordinates
-focus_button_coords = (250, 350)    # Replace with actual Focus button coordinates
-
-# Capture Function: Clicks the Capture button in MicroViewer Plus
-def capture_image():
-    pyautogui.moveTo(capture_button_coords)
-    pyautogui.click()
-    print("Image captured.")
-
-# Focus Adjustment Function: Clicks the Focus button to adjust focus
-def adjust_focus():
-    print("Adjusting focus...")
-    pyautogui.moveTo(focus_button_coords)
-    pyautogui.click()
-    time.sleep(1)  # Small delay to let focus adjust
-
-# Blurriness Check: Uses Variance of Laplacian to detect blurriness
-def is_blurry(image, threshold=blur_threshold):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-    print(f"Laplacian variance: {laplacian_var}")
-    return laplacian_var < threshold
-
-# Main Function: Capture with Focus Check
-def capture_with_focus_check():
-    # Focus MicroViewer Plus window
-    pyautogui.click(x=100, y=100)  # Replace with coordinates within the app window
-    time.sleep(1)  # Wait for the window to focus
-
-    attempts = 0
-    captured = False
-
-    while attempts < max_attempts and not captured:
-        # Assume we're capturing a frame from the camera (replace with actual capture code)
-        frame = cv2.imread('test_image.jpg')  # Replace with real-time image capture
-
-        if is_blurry(frame):
-            print("Image is blurry, adjusting focus...")
-            adjust_focus()
-            attempts += 1
+def bring_window_to_front(window_title):
+    """Bring the camera software window to the foreground."""
+    try:
+        # Get the window by title and bring it to the front
+        window = gw.getWindowsWithTitle(window_title)
+        if window:
+            window[0].activate()  # Focus the window
+            return True
         else:
-            capture_image()  # Capture if not blurry
-            captured = True
-            print("Image captured successfully.")
+            print(f"Window '{window_title}' not found.")
+            return False
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
 
-        time.sleep(2)  # Delay before next attempt
+def open_camera_software():
+    """Open the camera software in non-blocking mode"""
+    return subprocess.Popen(["C:\\MicroViewer_DMC-1213\\VSVC3EM.EXE"])
 
-    if not captured:
-        print("Failed to capture a clear image after multiple attempts.")
+def wait_for_software_to_load(timeout=60):
+    """Wait for the camera software window to appear"""
+    start_time = time.time()
+    while True:
+        # Check if the software window is present by its title
+        window_title = "MicroScope"  # Replace with the exact or partial window title
+        window = gw.getWindowsWithTitle(window_title)
+        if window:
+            return True
+        if time.time() - start_time > timeout:
+            print("Timeout: Software did not load in time.")
+            return False
+        time.sleep(1)  # Wait for 1 second before checking again
 
-# Run the capture with focus check
-capture_with_focus_check()
+def capture_image():
+    """Capture the image by pressing the key combination Ctrl + Insert"""
+    pyautogui.hotkey('ctrl', 'insert')
+    print("Image captured!")
+
+# 1. Open the camera software in non-blocking mode
+process = open_camera_software()
+
+# 2. Wait for the software to load completely
+if wait_for_software_to_load(timeout=60):  # Adjust the timeout as necessary
+    # 3. Wait a longer time before interacting with the software
+    time.sleep(20)  # Wait for 45 seconds 
+
+    # 4. Bring the software window into focus (use the window title or part of it)
+    window_title = "MicroScope"  # Adjust based on the software window title
+    if bring_window_to_front(window_title):
+        # 5. Simulate pressing Enter to dismiss the popup (if detected)
+        time.sleep(10)  # Wait for 3 seconds (adjust as necessary)
+        pyautogui.press('enter')
+
+        # 6. Capture the image by pressing Ctrl + Insert
+        time.sleep(5)  # Wait for 3 seconds (adjust as necessary)
+        capture_image()
+else:
+    print("Camera software did not load in time.")
+
+# Optionally, wait for the software to close before exiting the script
+process.wait()  # This ensures the script waits until the camera software closes
