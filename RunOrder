@@ -1,0 +1,159 @@
+import subprocess
+import time
+import serial
+from tkinter import messagebox
+
+def is_paused():
+    try:
+        with open("/home/asmluser/ImageStorage/pause_flag.txt", "r") as file:
+            return file.read().strip() == "1"
+    except Exception:
+        return False
+
+def init_serial_connection(port, baud_rate=9600):
+    try:
+        ser = serial.Serial(port, baud_rate, timeout=1)
+        print(f"Connected to Arduino on {port} at {baud_rate} baud.")
+        time.sleep(2)
+        return ser
+    except Exception as e:
+        print(f"Error connecting to Arduino: {e}")
+        return None
+
+def send_motor_control_command(ser, command):
+    if ser:
+        try:
+            print(f"Sending command: {command} to Arduino.")
+            ser.write(command.encode())
+            print(f"Sent command: {command} to Arduino.")
+        except Exception as e:
+            print(f"Error sending command to Arduino: {e}")
+            messagebox.showerror("Error", f"Error sending command to Arduino: {e}")
+
+def run_camera_control_script():
+    try:
+        print("Starting camera control script...")
+        subprocess.run(["python3", "guvcviewCameraControl"], check=True)
+        print("Camera control script ran successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error running camera control script: {e}")
+        messagebox.showerror("Error", f"Error running camera control script: {e}")
+
+def run_image_processing():
+    try:
+        subprocess.run(["python3", "ImageProcessing.py"], check=True)
+        print("Image processing ran successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error running image processing script: {e}")
+        messagebox.showerror("Error", f"Error running image processing script: {e}")
+
+def check_end_condition():
+    try:
+        with open("/home/asmluser/ImageStorage/run_count.txt", "r") as file:
+            run_count = int(file.read().strip())
+        return run_count >= 1588
+    except Exception as e:
+        print(f"Error reading end condition: {e}")
+        return False
+
+def run_image_quality():
+    try:
+        subprocess.run(["python3", "ImageQuality.py"], check=True)
+        print("Image Quality ran succesfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error running image processing script: {e}")
+        messagebox.showerror("Error", f"Error running image processing script: {e}")
+
+def generate_nextholename():
+    ranges = [
+        (1, 70, 'A'), (71, 140, 'B'), (141, 213, 'C'), (214, 288, 'D'),
+        (289, 365, 'E'), (366, 443, 'F'), (444, 523, 'G'), (524, 604, 'H'),
+        (605, 686, 'I'), (687, 770, 'J'), (771, 855, 'K'), (856, 942, 'L'),
+        (943, 1030, 'M'), (1031, 1119, 'N'), (1120, 1210, 'O'),
+        (1211, 1302, 'P'), (1303, 1396, 'Q'), (1397, 1491, 'R'), (1492, 1587, 'S')
+    ]
+    
+    count = read_image_counter()
+    char = 'b'
+    for start, end, letter in ranges:
+        if start <= count <= end:
+            char = letter
+            num = count - start + 1
+            holeInRow = str(end - start + 1)
+            break
+          
+    if num < 10:
+        numString = "0" + str(num)
+    else:
+        numString = str(num)
+         
+    return char + numString + holeInRow
+
+def read_image_counter():
+    try:
+        with open("/home/asmluser/ImageStorage/run_count.txt", "r") as file:
+            image_counter = int(file.read().strip())
+        return image_counter
+    except Exception as e:
+        return 0
+
+def wait_for_arduino_signal(ser):
+    try:
+        print("Waiting for Arduino signal...")
+        while True:
+            if is_paused():
+                print("Paused... waiting before Arduino check.")
+                time.sleep(1)
+                continue
+
+            if ser.in_waiting > 0:
+                break
+                
+        data = ser.readline().decode('utf-8').strip()
+        print(f"Data received: {data}")
+        return data == '1'
+    except Exception as e:
+        print(f"Error with serial communication: {e}")
+        return False
+
+def run_all_scripts(ser):
+    run_camera_control_script()
+    
+    while not check_end_condition():
+        while is_paused():
+            print("Paused... waiting.")
+            time.sleep(1)
+
+        nextHole = generate_nextholename()
+        print("Sending Motor to next hole: " + nextHole)
+        send_motor_control_command(ser, nextHole)
+
+        while is_paused():
+            print("Paused before camera.")
+            time.sleep(1)
+
+        if wait_for_arduino_signal(ser):
+            run_camera_control_script()
+            run_image_quality()
+
+    print("End condition met, starting image processing.")
+    run_image_processing()
+
+    # Clear pause flag at end
+    try:
+        with open("/home/asmluser/ImageStorage/pause_flag.txt", "w") as f:
+            f.write("0")
+    except Exception:
+        pass
+
+def on_run_button_click():
+    ser = serial.Serial('/dev/ttyACM0', 9600)
+    time.sleep(2)
+    if ser:
+        run_all_scripts(ser)
+        ser.close()
+    else:
+        messagebox.showerror("Error", "Failed to connect to Arduino.")
+
+if __name__ == "__main__":
+    on_run_button_click()

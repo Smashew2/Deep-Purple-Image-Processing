@@ -4,11 +4,11 @@ import serial
 import time
 
 # Set up serial communication
-serial_port = 'COM3'  # Change to your Arduino's serial port (e.g., 'COM3' for Windows or '/dev/ttyACM0' for Linux/Mac)
-baud_rate = 9600  # Match the baud rate to the one set in Arduino code
+# serial_port = 'COM3'  # Change to your Arduino's serial port (e.g., 'COM3' for Windows or '/dev/ttyACM0' for Linux/Mac)
+# baud_rate = 9600  # Match the baud rate to the one set in Arduino code
 
-ser = serial.Serial(serial_port, baud_rate)
-time.sleep(2)  # Wait for the serial connection to initialize
+# ser = serial.Serial(serial_port, baud_rate)
+# time.sleep(2)  # Wait for the serial connection to initialize
 
 def detect_circle(image, min_radius=50, max_radius=200):
     """Detect the center of the circle in an image using Canny and HoughCircles."""
@@ -40,7 +40,8 @@ def calculate_x_distance(circle_center, img_shape):
     return offset_x
 
 # Load Image
-image_path = r"C:\Users\smash\Downloads\ImageProcessing Test\KS030.JPG"
+image_path = r"C:\Users\smash\Downloads\ImageProcessing Test\Baseline Image\Baseline_Clean_Image.png"
+# image_path = r"C:\Users\smash\Downloads\ImageProcessing Test\KS030.JPG"
 frame = cv2.imread(image_path)
 
 if frame is None:
@@ -58,12 +59,12 @@ else:
         print(f"X Distance from center: {x_distance:.2f} pixels")
 
         # Send the x_distance to Arduino over serial
-        ser.write(f"{x_distance}\n".encode())  # Send the value as a string
+        # ser.write(f"{x_distance}\n".encode())  # Send the value as a string
 
     # Display final image
     cv2.imshow('Final Result', frame)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-# Close the serial communication when done
-ser.close()
+# # Close the serial communication when done
+# ser.close()

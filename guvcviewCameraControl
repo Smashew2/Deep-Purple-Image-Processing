@@ -1,0 +1,143 @@
+import os
+import subprocess
+import time
+import serial
+import signal
+
+# Function to get the current count from the file
+def get_run_count(file_path="/home/asmluser/ImageStorage/run_count.txt"):
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            count = int(f.read().strip())  # Read the count from file
+    else:
+        count = 0  # If the file doesn't exist, we start from 0
+    return count
+
+# Function to save the current count to the file
+def save_run_count(count, file_path="/home/asmluser/ImageStorage/run_count.txt"):
+    with open(file_path, "w") as f:
+        f.write(str(count))  # Save the count to the file
+
+# Function to generate the filename with the appropriate character based on the count
+def generate_filename(count, base_path="/home/asmluser/ImageStorage/", extension=".jpg"):
+    # Define your custom ranges for characters
+    ranges = [
+        (1, 70, 'A'),   
+        (71, 140, 'B'),  
+        (141, 213, 'C'),  
+        (214, 288, 'D'),  
+        (289, 365, 'E'),
+        (366, 443, 'F'),
+        (444, 523, 'G'),
+        (524, 604, 'H'),
+        (605, 686, 'I'),
+        (687, 770, 'J'),
+        (771, 855, 'K'),
+        (856, 942, 'L'),
+        (943, 1030, 'M'),
+        (1031, 1119, 'N'),
+        (1120, 1210, 'O'),
+        (1211, 1302, 'P'),
+        (1303, 1396, 'Q'),
+        (1397, 1491, 'R'),
+        (1492, 1587, 'S'),  
+    ]
+    
+    # Find the appropriate character for the current count
+    char = 'b'  # Default to 'b' if no range is matched
+    for start, end, letter in ranges:
+        if start <= count <= end:
+            char = letter
+            break
+    
+    # Generate the filename with the appropriate character
+    return f"{base_path}{char}{extension}"
+
+
+def take_picture():
+    count = get_run_count()
+    filename = generate_filename(count)
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+    command = [
+        "guvcview",
+        "-i", filename,
+        "-t", "1",
+        "-x", "640x480",
+        "-n", "1",
+        "-e"
+    ]
+
+    try:
+        print("Launching guvcview...")
+        process = subprocess.Popen(command)
+        process.wait(timeout=10)  # Wait max 10 seconds
+    except subprocess.TimeoutExpired:
+        print("guvcview timed out, attempting to close.")
+    finally:
+        close_guvcview_windows()
+
+    count += 1
+    save_run_count(count)
+    print("Capture complete.")
+
+# Function to ensure that all guvcview windows are closed
+def close_guvcview_windows():
+    try:
+        # First, check if there are any active guvcview processes
+        guvcview_processes = subprocess.check_output(["pgrep", "guvcview"]).decode('utf-8').strip().splitlines()
+
+        if guvcview_processes:
+            print(f"Found {len(guvcview_processes)} guvcview process(es) running. Attempting to close them.")
+
+            # Attempt to kill the processes
+            subprocess.run(["pkill", "guvcview"], check=True)
+            print("Closed guvcview processes successfully.")
+        else:
+            print("No guvcview processes found to kill.")
+        
+        # Double-check after a brief delay if any guvcview processes are still running
+        time.sleep(1)  # Allow a moment for the processes to terminate
+        remaining_processes = subprocess.check_output(["pgrep", "guvcview"]).decode('utf-8').strip().splitlines()
+
+        # If any guvcview processes are still running, forcefully terminate them
+        if remaining_processes:
+            print(f"Warning: Found {len(remaining_processes)} lingering guvcview process(es). Attempting forceful termination.")
+            for pid in remaining_processes:
+                os.kill(int(pid), 9)  # Send SIGKILL to force termination
+            print("Forcefully closed lingering guvcview processes.")
+        else:
+            print("All guvcview processes closed.")
+    
+    except subprocess.CalledProcessError as e:
+        print(f"Error trying to close guvcview processes: {e}")
+    except Exception as e:
+        print(f"Unexpected error during cleanup: {e}")
+
+# Function to check for a boolean signal from Arduino
+def wait_for_arduino_signal(ser):
+    try:
+        # Initialize serial connection with the Arduino
+        print("Waiting for Arduino signal...")
+        
+        #Wait until at least one byte of data is sent
+        while True:
+            if ser.in_waiting > 0:
+                break
+                
+        data = ser.readline().decode('utf-8').strip() #Read data in
+        print(f"Data recieved: {data}")
+        if data == '1':  # If Arduino sends '1', proceed to camera
+                return True
+            
+    except Exception as e:
+        print(f"Error with serial communication: {e}")
+        return False
+
+if __name__ == "__main__":
+    # Wait for the Arduino to send a signal before taking a picture
+    #ser = serial.Serial('/dev/ttyACM0', 9600)
+    #time.sleep(2)
+    
+    take_picture()
+        
